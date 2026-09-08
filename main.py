@@ -1,72 +1,90 @@
 import os
+import random
 import time
-import cloudscraper
-from colorama import Fore, init
+import requests
 
-init(autoreset=True)
-
-# 1. Carrega o alvo (URL ou usuário) das variáveis de ambiente ou arquivo
-target = os.getenv("TARGET_URL")
-if not target:
-    try:
-        with open("target.txt", "r") as f:
-            target = f.read().strip()
-    except FileNotFoundError:
-        target = ""
-
-if not target:
-    print(Fore.RED + "[ERRO] Nenhuma URL/Usuário configurado! Configure a variável TARGET_URL.")
-    exit(1)
-
-# Garante que a URL esteja no formato correto
-if not target.startswith("http"):
-    target = f"https://guns.lol/{target}"
-
-# 2. Carrega as proxies das variáveis de ambiente ou do arquivo proxies.txt
-proxies_raw = os.getenv("PROXIES_LIST")
-
-if proxies_raw:
-    proxies = [p.strip() for p in proxies_raw.split("\n") if p.strip()]
-else:
-    try:
-        with open("proxies.txt", "r") as f:
-            proxies = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        proxies = []
-
-if not proxies:
-    print(Fore.YELLOW + "[AVISO] Nenhuma proxy encontrada. Rodando com IP direto (não recomendado para muitas reqs).")
-
-print(Fore.CYAN + f"=== Bot Iniciado ===")
-print(Fore.CYAN + f"Alvo: {target}")
-print(Fore.CYAN + f"Total de Proxies carregadas: {len(proxies)}\n")
-
-# 3. Loop principal de envio de visualizações
-scraper = cloudscraper.create_scraper()
-
-def send_view(proxy=None):
-    proxy_dict = None
-    if proxy:
-        if not proxy.startswith("http"):
-            proxy = f"http://{proxy}"
-        proxy_dict = {"http": proxy, "https": proxy}
+def carregar_proxies():
+    """Lê a variável de ambiente PROXIES_LIST e retorna uma lista limpa."""
+    raw_proxies = os.getenv("PROXIES_LIST", "")
     
-    try:
-        response = scraper.get(target, proxies=proxy_dict, timeout=10)
-        if response.status_code == 200:
-            print(Fore.GREEN + f"[SUCESSO] Visualização enviada via {proxy if proxy else 'IP Local'}")
-        else:
-            print(Fore.YELLOW + f"[FALHA] Código de status: {response.status_code}")
-    except Exception as e:
-        print(Fore.RED + f"[ERRO] Falha ao enviar requisição com a proxy {proxy}: {e}")
+    if not raw_proxies:
+        print("⚠️ AVISO: A variável 'PROXIES_LIST' não foi encontrada ou está vazia.")
+        return []
+    
+    # Limpa quebras de linha, espaços e remove prefixos como http:// ou socks5://
+    proxies = []
+    for line in raw_proxies.splitlines():
+        p = line.strip()
+        if "://" in p:
+            p = p.split("://")[-1]
+        if p:
+            proxies.append(p)
+            
+    return proxies
 
-# Execução
-if proxies:
-    for proxy in proxies:
-        send_view(proxy)
-        time.sleep(1) # Intervalo de 1 segundo entre requisições
-else:
-    while True:
-        send_view()
-        time.sleep(2)
-                  
+def executar_requisicao_com_proxy(url_alvo, proxy):
+    """
+    Tenta fazer a requisição usando um proxy específico.
+    Retorna a resposta se der certo, ou None se falhar.
+    """
+    config_proxy = {
+        "http": f"http://{proxy}",
+        "https": f"http://{proxy}"
+    }
+    
+    # Headers para simular um navegador comum e evitar bloqueios fáceis
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    try:
+        # timeout=4 evita que o bot fique travado esperando por proxies mortas
+        response = requests.get(url_alvo, proxies=config_proxy, headers=headers, timeout=4)
+        if response.status_code == 200:
+            return response
+    except requests.exceptions.RequestException:
+        # Pega qualquer erro de rede/timeout/conexão recusada
+        pass
+        
+    return None
+
+def main():
+    # URL do alvo (Altere para a URL real que o seu bot precisa acessar)
+    URL_ALVO = "https://httpbin.org/ip"
+    
+    proxies = carregar_proxies()
+    
+    if not proxies:
+        print("❌ Nenhuma proxy carregada. Encerrando execução.")
+        return
+
+    print(f"🔄 Total de {len(proxies)} proxies carregadas da variável de ambiente.")
+    
+    # Embaralha a lista para não usar sempre na mesma ordem
+    random.shuffle(proxies)
+    
+    sucessos = 0
+
+    for ip_porta in proxies:
+        print(f"🌐 Testando proxy: {ip_porta} ...")
+        
+        resposta = executar_requisicao_com_proxy(URL_ALVO, ip_porta)
+        
+        if resposta:
+            print(f"✅ SUCESSO! Proxy funcionou: {ip_porta}")
+            print(f"📄 Resposta: {resposta.text.strip()}")
+            sucessos += 1
+            
+            # INSIRA AQUI O CÓDIGO DO SEU BOT QUE PROCESSA OS DADOS QUE DEU CERTO
+            # ...
+            
+            # Dá uma pequena pausa entre requisições bem-sucedidas
+            time.sleep(2)
+        else:
+            print(f"❌ Falhou ou expirou: {ip_porta}")
+
+    print(f"\n📊 Execução finalizada! Total de contabilizações com sucesso: {sucessos}")
+
+if __name__ == "__main__":
+    main()
+        
