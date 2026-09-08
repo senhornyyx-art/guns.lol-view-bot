@@ -1,60 +1,72 @@
-from concurrent.futures import ThreadPoolExecutor
-import random
-import colorama
+import os
+import time
 import cloudscraper
-banner=""" ▄▄ • ▄• ▄▌ ▐ ▄ .▄▄ ·   ▄▄▌        ▄▄▌     ▌ ▐·▪  ▄▄▄ .▄▄▌ ▐ ▄▌▄▄▄▄·       ▄▄▄▄▄
-▐█ ▀ ▪█▪██▌•█▌▐█▐█ ▀.   ██•   ▄█▀▄ ██•    ▪█·█▌██ ▀▄.▀·██· █▌▐█▐█ ▀█▪ ▄█▀▄ •██  
-▄█ ▀█▄█▌▐█▌▐█▐▐▌▄▀▀▀█▄  ██▪  ▐█▌.▐▌██▪    ▐█▐█•▐█·▐▀▀▪▄██▪▐█▐▐▌▐█▀▀█▄▐█▌.▐▌ ▐█.▪
-▐█▄▪▐█▐█▄█▌██▐█▌▐█▄▪▐█  ▐█▌▐▌▐█▌.▐▌▐█▌▐▌   ███ ▐█▌▐█▄▄▌▐█▌██▐█▌██▄▪▐█▐█▌.▐▌ ▐█▌·
-·▀▀▀▀  ▀▀▀ ▀▀ █▪ ▀▀▀▀ ▀ .▀▀▀  ▀█▄▀▪.▀▀▀   . ▀  ▀▀▀ ▀▀▀  ▀▀▀▀ ▀▪·▀▀▀▀  ▀█▄▀▪ ▀▀▀ 
-"""
-print(banner)
-url = input("Votre pseudo guns.lol > ")
-headers = {
-    #"cookie": "security_token=6d647174d809ee80e2ad14f80fe07cb5c2c1517d5ea72a7401b403eb5ead5c2e",
-    "accept": "*/*",
-    "accept-language": "?0; Mobile",
-    "cache-control": "no-cache",
-    "content-length": "0",
-    "origin": "https://guns.lol",
-    "pragma": "no-cache",
-    "priority": "u=1, i",
-    "referer": "https://guns.lol/"+url,
-    "sec-ch-ua": "\"Not/A)Brand\";v=\"8\", \"Chromium\";v=\"126\", \"Google Chrome\";v=\"126\"",
-    "sec-ch-ua-arch": "\"x86\"",
-    "sec-ch-ua-bitness": "\"64\"",
-    "sec-ch-ua-full-version": "\"126.0.6478.127\"",
-    "sec-ch-ua-full-version-list": "\"Not/A)Brand\";v=\"8.0.0.0\", \"Chromium\";v=\"126.0.6478.127\", \"Google Chrome\";v=\"126.0.6478.127\"",
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-model": "\"\"",
-    "sec-ch-ua-platform": "\"Windows\"",
-    "sec-ch-ua-platform-version": "\"15.0.0\"",
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "username": url
-}
-views = 0
-def test():
-    global url, headers, views
-    while True:
-        prox = random.choice(open("proxies.txt").read().splitlines())
-        proxy = "http://" + prox
-        proxyDict = {
-            "http": proxy,
-            "https": proxy
-        }
-        try:
-            scraper = cloudscraper.create_scraper(delay=10)
-            # print("https://cfx.re/join/"+test)
-            response = scraper.post("https://guns.lol/api/view/"+url, headers=headers, proxies=proxyDict)
-            if response.status_code == 200:
-                views+=1
-                print("Vues total : "+str(views))
-        except Exception as e:
-            pass
+from colorama import Fore, init
 
-with ThreadPoolExecutor(max_workers=301) as exc:
-    for i in range(300):
-        exc.submit(test)
+init(autoreset=True)
+
+# 1. Carrega o alvo (URL ou usuário) das variáveis de ambiente ou arquivo
+target = os.getenv("TARGET_URL")
+if not target:
+    try:
+        with open("target.txt", "r") as f:
+            target = f.read().strip()
+    except FileNotFoundError:
+        target = ""
+
+if not target:
+    print(Fore.RED + "[ERRO] Nenhuma URL/Usuário configurado! Configure a variável TARGET_URL.")
+    exit(1)
+
+# Garante que a URL esteja no formato correto
+if not target.startswith("http"):
+    target = f"https://guns.lol/{target}"
+
+# 2. Carrega as proxies das variáveis de ambiente ou do arquivo proxies.txt
+proxies_raw = os.getenv("PROXIES_LIST")
+
+if proxies_raw:
+    proxies = [p.strip() for p in proxies_raw.split("\n") if p.strip()]
+else:
+    try:
+        with open("proxies.txt", "r") as f:
+            proxies = [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        proxies = []
+
+if not proxies:
+    print(Fore.YELLOW + "[AVISO] Nenhuma proxy encontrada. Rodando com IP direto (não recomendado para muitas reqs).")
+
+print(Fore.CYAN + f"=== Bot Iniciado ===")
+print(Fore.CYAN + f"Alvo: {target}")
+print(Fore.CYAN + f"Total de Proxies carregadas: {len(proxies)}\n")
+
+# 3. Loop principal de envio de visualizações
+scraper = cloudscraper.create_scraper()
+
+def send_view(proxy=None):
+    proxy_dict = None
+    if proxy:
+        if not proxy.startswith("http"):
+            proxy = f"http://{proxy}"
+        proxy_dict = {"http": proxy, "https": proxy}
+    
+    try:
+        response = scraper.get(target, proxies=proxy_dict, timeout=10)
+        if response.status_code == 200:
+            print(Fore.GREEN + f"[SUCESSO] Visualização enviada via {proxy if proxy else 'IP Local'}")
+        else:
+            print(Fore.YELLOW + f"[FALHA] Código de status: {response.status_code}")
+    except Exception as e:
+        print(Fore.RED + f"[ERRO] Falha ao enviar requisição com a proxy {proxy}: {e}")
+
+# Execução
+if proxies:
+    for proxy in proxies:
+        send_view(proxy)
+        time.sleep(1) # Intervalo de 1 segundo entre requisições
+else:
+    while True:
+        send_view()
+        time.sleep(2)
+                  
